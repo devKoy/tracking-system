@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Parcel Tracking</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css" />
+    <style>
+        /* CSS styling */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        .map {
+            width: 100%;
+            height: 400px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Parcel Tracking</h1>
+        <div id="map" class="map"></div>
+        <p id="eta"></p>
+        <p>Current Location: <span id="current-location">Unknown</span></p>
+    </div>
+
+    <!-- Include Leaflet library and implement tracking functionality -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script>
+        // JavaScript code for tracking functionality
+
+        // Function to initialize the map
+        function initMap() {
+            var mapElement = document.getElementById('map');
+            var map = L.map(mapElement).setView([13.7791, 122.9803], 10); // Initial map center (Manila)
+
+            // Add a tile layer for the map (you can choose different tile providers)
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
+                maxZoom: 18
+            }).addTo(map);
+
+            return map;
+        }
+
+        // Function to get user's location and calculate estimated time of arrival
+        function getUserLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    var userLat = position.coords.latitude;
+                    var userLng = position.coords.longitude;
+
+                    var map = initMap(); // Get the map object
+
+                    // Custom icon for truck marker
+                    var truckIcon = L.icon({
+                        iconUrl: 'https://cdn-icons-png.flaticon.com/512/1758/1758531.png',
+                        iconSize: [35, 35],
+                        iconAnchor: [22, 35],
+                        popupAnchor: [-3, -76]
+                    });
+
+                    // Reverse geocoding to get municipality information
+                    var geocodeUrl =
+                        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${userLat}&lon=${userLng}`;
+
+                    fetch(geocodeUrl)
+                        .then(response => response.json())
+                        .then(data => {
+                            var municipality = data.address.town || data.address.city || 'Unknown';
+                            document.getElementById('current-location').textContent = municipality;
+                        })
+                        .catch(error => {
+                            console.log('Error occurred during reverse geocoding:', error);
+                        });
+
+                    // Marker: User's location
+                    var userMarker = L.marker([userLat, userLng], {
+                        icon: truckIcon
+                    }).addTo(map);
+                    userMarker.bindPopup('Your Location');
+
+                    // Marker: Sipocot
+                    var sipocotMarker = L.marker([13.8406, 122.9206]).addTo(map);
+                    sipocotMarker.bindPopup('Sipocot, Camarines Sur');
+
+                    // Fetch the road path line using routing service
+                    var key = '5b3ce3597851110001cf624829ec6d9cbefd473c848105f3e0355d29';
+                    var url =
+                        'https://api.openrouteservice.org/v2/directions/driving-car?api_key=' + key +
+                        '&start=' +
+                        userLng + ',' + userLat + '&end=122.9206,13.8406';
+                    axios.get(url)
+                        .then(function (response) {
+                            var route = response.data.features[0].geometry.coordinates;
+                            var pathCoordinates = [];
+                            for (var i = 0; i < route.length; i++) {
+                                pathCoordinates.push([route[i][1], route[i][0]]);
+                            }
+                            var pathLine = L.polyline(pathCoordinates, {
+                                color: 'red'
+                            }).addTo(map);
+                            map.fitBounds(pathLine.getBounds());
+
+                            // Calculate estimated time of arrival
+                            var distance = map.distance([userLat, userLng], [13.8406, 122.9206]);
+                            var estimatedTime = calculateEstimatedTime(distance);
+                            var etaElement = document.getElementById('eta');
+                            etaElement.textContent = 'Estimated Time of Arrival: ' + estimatedTime;
+                        })
+                        .catch(function (error) {
+                            console.log(error);
+                        });
+                });
+            } else {
+                alert('Geolocation is not supported by your browser.');
+            }
+        }
+
+        // Function to calculate estimated time of arrival based on distance
+        function calculateEstimatedTime(distance) {
+            // Assuming an average speed of 50 km/h (you can adjust this value as needed)
+            var averageSpeed = 50;
+            var estimatedTimeInHours = distance / averageSpeed;
+            var estimatedTimeInMinutes = estimatedTimeInHours * 60;
+            var estimatedTime = Math.round(estimatedTimeInMinutes) + ' minutes';
+
+            return estimatedTime;
+        }
+
+        // Call the function to get user's location and calculate estimated time of arrival
+        getUserLocation();
+    </script>
+</body>
+
+</html>
